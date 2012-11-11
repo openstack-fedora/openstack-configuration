@@ -122,12 +122,15 @@ keystone role-list
 keystone tenant-list
 # If the output is made of 'printt' only, apply the patch:
 # pushd /usr/lib/python2.7/site-packages
-# wget https://launchpadlibrarian.net/104576486/replace-printt.diff
-# # patch -p1 --dry-run < replace-printt.diff
-# patch -p1 < replace-printt.diff
-# \rm -f replace-printt.diff
+# wget https://github.com/denisarnaud/openstack-configuration/raw/master/keystoneclient-fix-printt.patch
+# wget https://github.com/denisarnaud/openstack-configuration/raw/master/novaclient-fix-printt.patch 
+# patch -p1 --dry-run < keystoneclient-fix-printt.patch
+# patch -p1 < keystoneclient-fix-printt.patch
+# patch -p1 --dry-run < novaclient-fix-printt.patch
+# patch -p1 < novaclient-fix-printt.patch
 # popd
 # midori https://bugs.launchpad.net/keystone/+bug/996638
+# Then, the process must be restarted from the beginning (wiping out the database)
 
 # Check that the user roles have been set properly
 ROLE_ADMIN_ID=$(keystone role-list | awk '/ admin / {print $2}')
