@@ -1,0 +1,34 @@
+From 166451592f6a8d69eb9ab6492d17c6748c136e67 Mon Sep 17 00:00:00 2001
+From: Jay Doane <jay.s.doane@gmail.com>
+Date: Mon, 7 May 2012 19:08:27 -0700
+Subject: [PATCH] Replace obsolete printt method by using get_string and
+ builtin print function
+
+---
+ keystoneclient/utils.py |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/keystoneclient/utils.py b/keystoneclient/utils.py
+index 082fa7b..7672ef6 100644
+--- a/keystoneclient/utils.py
++++ b/keystoneclient/utils.py
+@@ -34,14 +34,14 @@ def print_list(objs, fields, formatters={}):
+                 row.append(data)
+         pt.add_row(row)
+ 
+-    pt.printt(sortby=fields[0])
++    print(pt.get_string(sortby=fields[0]))
+ 
+ 
+ def print_dict(d):
+     pt = prettytable.PrettyTable(['Property', 'Value'], caching=False)
+     pt.aligns = ['l', 'l']
+     [pt.add_row(list(r)) for r in d.iteritems()]
+-    pt.printt(sortby='Property')
++    print(pt.get_string(sortby='Property'))
+ 
+ 
+ def find_resource(manager, name_or_id):
+-- 
+1.7.9.5
+
