@@ -29,6 +29,10 @@ yum -y install openstack-dashboard openstack-glance openstack-keystone \
 yum -y install openstack-swift openstack-swift-proxy openstack-swift-account \
 	openstack-swift-container openstack-swift-object memcached
 
+#
+yum -y install appliance-tools appliance-tools-minimizer febootstrap rubygem-boxgrinder-build
+
+
 ##
 # MySQL databases
 mkdir -p ~/etc
@@ -209,18 +213,30 @@ glance index
 nova-manage network create demonet 10.0.0.0/24 1 256 --bridge=demonetbr0
 
 ##
-# (Fedora 16 64bits) OS image
+# (Fedora 16/17 64bits) OS image
 # Get the image from the Internet
-IMG_NAME=f16-x86_64-openstack-sda.qcow2
-IMG_URL=http://berrange.fedorapeople.org/images/2012-02-29/${IMG_NAME}
-IMG_DIR=/data/virtualisation/Fedora/Fedora-16-x86_64-qcow2
+IMG_DIST_TYPE=Fedora
+#IMG_DIST_REL=16
+IMG_DIST_REL=17
+IMG_DIST_FLV=x86_64
+IMG_TARGET=openstack
+IMG_DISK_TYPE=sda
+#IMG_DATE=2012-02-29
+IMG_DATE=2012-11-15
+IMG_NAME=f${IMG_DIST_REL}-${IMG_DIST_FLV}-${IMG_TARGET}-${IMG_DISK_TYPE}.qcow2
+IMG_BASE_URL=http://berrange.fedorapeople.org/images
+IMG_URL=${IMG_BASE_URL}/${IMG_DATE}/${IMG_NAME}
+IMG_DIR=/data/virtualisation/${IMG_DIST_TYPE}/${IMG_DIST_TYPE}-${IMG_DIST_REL}-${IMG_DIST_FLV}-qcow2
 mkdir -p ${IMG_DIR}
 pushd ${IMG_DIR}
+echo "Downloading the '${IMG_NAME}' ISO image (~250 MB) from ${IMG_BASE_URL}; it may take some time..."
 wget ${IMG_URL}
+echo "The '${IMG_NAME}' ISO image has been archived into the ${IMG_DIR} directory."
 popd
+ls -lahF --color ${IMG_DIR}
 
 # Tell glance about the image
-glance add name=f16-jeos is_public=true disk_format=qcow2 container_format=bare < ${IMG_DIR}/${IMG_NAME}
+glance add name=f${IMG_DIST_REL}-jeos is_public=true disk_format=qcow2 container_format=bare < ${IMG_DIR}/${IMG_NAME}
 
 # Start the network block device (nbd) module
 modprobe nbd
@@ -233,7 +249,7 @@ nova keypair-add mykey > ~/.ssh/id_oskey_demo
 chmod 600 ~/.ssh/id_oskey_demo
 
 # Launch the VM instance (JEOS = "Just Enough OS")
-GLANCE_IMG_ID=$(glance index | grep f16-jeos | awk '{print $1}')
+GLANCE_IMG_ID=$(glance index | grep f${IMG_DIST_REL}-jeos | awk '{print $1}')
 # For the flavor reference, see the result of the 'nova flavor-list' command above
 nova boot myserver --flavor 2 --key_name mykey --image ${GLANCE_IMG_ID}
 
@@ -412,6 +428,33 @@ swift list
 # Please the following instructions from
 midori https://fedoraproject.org/wiki/Getting_started_with_OpenStack_on_Fedora_17#Additional_Functionality
 
+
+
+#### ========================================================== ####
+##                        Image creation                          ##
+#### ========================================================== ####
+APPL_DIR=/data/virtualisation/Appliance
+APPL_NAME=${IMG_DIST_TYPE}-${IMG_DIST_REL}-${IMG_DIST_FLV}-${IMG_TARGET}
+KS_SCRIPT_NAME=${APPL_NAME}.ks
+KS_SCRIPT_DIR=./ks
+# The following command will take some time (around 20mn with an Internet bandwidth of 300KB/s),
+# as it downloads an image of approximately 250MB, then install some updates and do some adjustments.
+# The RAW image is installed within a newly created directory, namely ${APPL_NAME}
+echo "Downloading the ISO installation media for Fedora ${IMG_DIST_REL} ${IMG_DIST_FLV},"
+echo "starting that Fedora distribution within a dedicated KVM-based VM, changing the configuration to have it cloud-ready."
+echo "The whole operation may take several tens of minutes..."
+appliance-creator --name ${APPL_NAME} --config=${KS_SCRIPT_DIR}/${KS_SCRIPT_NAME}
+echo "The configured RAW image will be available within the newly created ${APPL_DIR}/${APPL_NAME} directory."
+ls -lahF --color ${APPL_NAME}
+echo "Moving that image from the current directory to ${APPL_DIR}/${APPL_NAME}."
+echo "Depending on whether the partitions are different and on the image size, it may take a few minutes."
+mkdir -p ${APPL_DIR}
+\mv -f ${APPL_NAME} ${APPL_DIR}
+ls -lahF --color ${APPL_DIR}/${APPL_NAME}
+echo "The raw image will now be converted into a QEMU-based one (QCOW2 format). This again may take a few minutes."
+qemu-img convert -f raw -c -O qcow2 ${APPL_DIR}/${APPL_NAME}/${APPL_NAME}-${IMG_DISK_TYPE}.raw ${IMG_DIR}/${APPL_NAME}-${IMG_DISK_TYPE}.qcow2
+echo "QEMU-based image created in the ${IMG_DIR} directory:"
+ls -lahF --color ${IMG_DIR}/${APPL_NAME}-${IMG_DISK_TYPE}.qcow2
 
 
 #### ========================================================== ####

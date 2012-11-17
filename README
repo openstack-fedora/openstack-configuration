@@ -25,9 +25,16 @@ yum -y install openstack-dashboard openstack-glance openstack-keystone \
 	openstack-swift-object python-django-horizon python-keystoneclient \
 	python-nova-adminclient python-quantumclient nbd
 
-#
+# Swift
 yum -y install openstack-swift openstack-swift-proxy openstack-swift-account \
 	openstack-swift-container openstack-swift-object memcached
+
+# Oz
+yum -y install oz
+
+# Eucalyptus
+yum -y install euca2ools
+
 
 ##
 # MySQL databases
@@ -411,6 +418,103 @@ swift list
 ##
 # Please the following instructions from
 midori https://fedoraproject.org/wiki/Getting_started_with_OpenStack_on_Fedora_17#Additional_Functionality
+
+##
+# Create and attache a volume with Cinder (F18+)
+# systemctl start tgtd.service && systemctl enable tgtd.service
+# systemctl disable tgtd.service
+
+##
+# Eucalyptus tools
+#
+
+# Set up a rc file for EC2 access
+. ~/keystonerc
+USER_ID=$(keystone user-list | awk '/admin / {print $2}')
+ACCESS_KEY=$(keystone ec2-credentials-list --user $USER_ID | awk '/admin / {print $4}')
+SECRET_KEY=$(keystone ec2-credentials-list --user $USER_ID | awk '/admin / {print $6}')
+mkdir -p ~/etc
+cat > ~/etc/novarc << _EOF
+export EC2_URL=http://localhost:8773/services/Cloud
+export EC2_ACCESS_KEY=$ACCESS_KEY
+export EC2_SECRET_KEY=$SECRET_KEY
+_EOF
+chmod 600 ~/etc/novarc
+cd
+ln -sf etc/novarc novarc
+. ~/novarc 
+
+# Launch the instance
+euca-run-instances f16-jeos -k mykey
+# Check that it was created
+euca-describe-instances
+# Get details (note that the instance number may change if other VM are still running)
+euca-get-console-output i-00000001
+# Terminate the instance
+euca-terminate-instances i-00000001
+
+##
+# Build our own images with Oz
+#
+
+# Create a template definition file:
+cat > ~/etc/f17-jeos.tdl << __EOF__
+<template>
+ <name>fedora17_x86_64</name>
+ <description>My Fedora 17 x86_64 template</description>
+ <os>
+  <name>Fedora</name>
+  <version>17</version>
+  <arch>x86_64</arch>
+  <install type='url'>
+    <url>http://download.fedoraproject.org/pub/fedora/linux/releases/17/Fedora/x86_64/os/</url>
+  </install>
+ </os>
+ <commands>
+   <command name='setup-rc-local'>
+sed -i 's/rhgb quiet/console=ttyS0/' /boot/grub/grub.conf
+ 
+cat >> /etc/rc.local &lt;&lt; _EOF
+if [ ! -d /root/.ssh ]; then
+  mkdir -p /root/.ssh
+  chmod 700 /root/.ssh
+fi
+ 
+# Fetch public key using HTTP
+ATTEMPTS=10
+while [ ! -f /root/.ssh/authorized_keys ]; do
+	curl -f http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key > /tmp/aws-key 2>/dev/null
+	if [ \$? -eq 0 ]; then
+		cat /tmp/aws-key >> /root/.ssh/authorized_keys
+		chmod 0600 /root/.ssh/authorized_keys
+		restorecon /root/.ssh/authorized_keys
+		\rm -f /tmp/aws-key
+		echo "Successfully retrieved AWS public key from instance metadata"
+	else
+		FAILED=\$((\$FAILED + 1))
+		if [ \$FAILED -ge \$ATTEMPTS ]; then
+			echo "Failed to retrieve AWS public key after \$FAILED attempts, quitting"
+			break
+		fi
+	        echo "Could not retrieve AWS public key (attempt #\$FAILED/\$ATTEMPTS), retrying in 5 seconds..."
+    	    sleep 5
+	    fi
+	done
+_EOF
+   </command>
+ </commands>
+</template>
+__EOF__
+ 
+# Then do:
+oz-install -d4 -u ~/etc/f17-jeos.tdl
+# Suggested on http://meetbot.fedoraproject.org/fedora-test-day/2012-03-08/openstack_test_day.2012-03-08-13.08.log.html
+# virsh net-edit default # and give it a 192.168.123.0 range
+# virsh net-start default
+# Once built, you simply have to register the image with Nova:
+glance add name=f17-jeos is_public=true container_format=bare disk_format=raw < /var/lib/libvirt/images/fedora17_x86_64.dsk
+glance index
+
 
 
 
