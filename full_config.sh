@@ -11,27 +11,28 @@ midori http://fedoraproject.org/wiki/Getting_started_with_OpenStack_on_Fedora_17
 ##
 # Dependencies
 yum install openstack-utils openstack-nova openstack-glance openstack-keystone \
-	openstack-dashboard qpid-cpp-server-daemon qpid-cpp-server memcached \
-	openstack-swift-doc openstack-swift-proxy
+	openstack-dashboard openstack-quantum openstack-swift openstack-tempo \
+	openstack-utils qpid-cpp-server-daemon qpid-cpp-server \
+	memcached openstack-swift-doc openstack-swift-proxy
 yum -y install python-keystone python-keystone-auth-token python-keystoneclient \
 	openstack-keystone openstack-keystone-doc python-keystoneclient-doc \
 	python-django-openstack-auth
 
 #
-yum -y install openstack-dashboard openstack-glance openstack-keystone \
-	openstack-nova openstack-quantum openstack-swift openstack-tempo openstack-utils \
-	rubygem-openstack rubygem-openstack-compute openstack-quantum-linuxbridge \
+yum -y install rubygem-openstack rubygem-openstack-compute openstack-quantum-linuxbridge \
 	openstack-quantum-openvswitch openstack-swift-account openstack-swift-container \
-	openstack-swift-object python-django-horizon python-keystoneclient \
-	python-nova-adminclient python-quantumclient nbd
+	openstack-swift-object openstack-swift-account openstack-swift-container \
+	python-django-horizon python-keystoneclient python-nova-adminclient \
+	python-quantumclient nbd
 
-#
-yum -y install openstack-swift openstack-swift-proxy openstack-swift-account \
-	openstack-swift-container openstack-swift-object memcached
-
-#
+# Image creation
 yum -y install appliance-tools appliance-tools-minimizer febootstrap rubygem-boxgrinder-build
 
+# Eucalyptus
+yum -y install euca2ools
+
+# DeltaCloud
+yum -y install deltacloud-core-eucalyptus
 
 ##
 # MySQL databases
@@ -240,7 +241,7 @@ glance add name=f${IMG_DIST_REL}-jeos is_public=true disk_format=qcow2 container
 
 # Start the network block device (nbd) module
 modprobe nbd
-echo nbd | sudo tee -a /etc/modules-load.d/nbd.conf
+echo nbd | sudo tee /etc/modules-load.d/nbd.conf
 
 # Create a key pair
 mkdir -p ~/.ssh
@@ -261,7 +262,7 @@ virsh list
 nova list # Wait that the status of myserver switches to ACTIVE (it may take time)
 ssh -i ~/.ssh/id_oskey_demo ec2-user@10.0.0.2
 # If there is any error, check the log file:
-grep -Hin /var/log/nova/compute.log
+grep -Hin error /var/log/nova/compute.log
 # Potentially, restart the nova scheduler:
 systemctl restart openstack-nova-scheduler.service
 # Check also the logs of the console:
