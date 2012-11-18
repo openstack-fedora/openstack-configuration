@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenStack Cinder demo disk image
+DefaultDependencies=false
+ConditionFileIsExecutable=/usr/libexec/cinder/voladm
+Before=local-fs.target
+After=systemd-udev-settle.service
+Required=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/cinder/voladm attach
+ExecStop=/usr/libexec/cinder/voladm detach
+ExecStatus=/usr/libexec/cinder/voladm status
+TimeoutSec=60
+RemainAfterExit=yes
+
+[Install]
+WantedBy=local-fs.target
+Also=systemd-udev-settle.service

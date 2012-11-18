@@ -1,0 +1,54 @@
+#!/bin/sh
+
+LOOP_DEVICE=/dev/loop0
+VOLUME_FILE=/data/virtualisation/volumes/cinder-volumes.img
+
+if [ ! -f $VOLUME_FILE ]
+then
+	echo "The disk image '$VOLUME_FILE' does not exist. It is needed by OpenStack Cinder."
+	exit 1
+fi
+
+attach() {
+	echo -n "Mounting the $VOLUME_FILE disk image as the $LOOP_DEVICE loop-back device, to be used by OpenStack Cinder."
+	losetup $LOOP_DEVICE $VOLUME_FILE
+	echo
+}
+
+detach() {
+	echo -n "Detach the $VOLUME_FILE disk image from the $LOOP_DEVICE device."
+	losetup -d $LOOP_DEVICE
+	echo
+}
+
+status() {
+	DEV_STATUS=$(losetup $LOOP_DEVICE | grep "$VOLUME_FILE" | cut -d':' -f1)
+	if [ -z "$DEV_STATUS" ]
+	then
+		echo -n "The $LOOP_DEVICE is no longer attached to the $VOLUME_FILE disk image"
+	else
+		echo -n "The $LOOP_DEVICE is attached to the $VOLUME_FILE disk image"
+	fi
+	echo
+}
+
+case "$1" in
+	attach)
+		attach
+		RETVAL=$?
+		;;
+	detach)
+		detach
+		RETVAL=$?
+		;;
+	status)
+		status
+		RETVAL=$?
+		;;
+	*)
+		echo $"Usage: $0 {attach|detach|status}" 
+		exit 1
+esac
+ 
+exit $RETVAL
+
