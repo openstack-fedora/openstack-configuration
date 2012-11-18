@@ -3,8 +3,8 @@ Description=OpenStack Cinder demo disk image
 DefaultDependencies=false
 ConditionFileIsExecutable=/usr/libexec/cinder/voladm
 Before=local-fs.target
-After=systemd-udev-settle.service
-Required=systemd-udev-settle.service
+After=udev-settle.service
+Required=udev-settle.service
 
 [Service]
 Type=oneshot
@@ -16,4 +16,4 @@ RemainAfterExit=yes
 
 [Install]
 WantedBy=local-fs.target
-Also=systemd-udev-settle.service
+Also=udev-settle.service

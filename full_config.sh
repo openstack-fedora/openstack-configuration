@@ -9,24 +9,71 @@
 midori http://fedoraproject.org/wiki/Getting_started_with_OpenStack_on_Fedora_17
 
 ##
-# Dependencies
-yum install openstack-utils openstack-nova openstack-glance openstack-keystone \
-	openstack-dashboard openstack-quantum openstack-swift openstack-tempo \
-	openstack-utils qpid-cpp-server-daemon qpid-cpp-server \
-	memcached openstack-swift-doc openstack-swift-proxy
-yum -y install python-keystone python-keystone-auth-token python-keystoneclient \
-	openstack-keystone openstack-keystone-doc python-keystoneclient-doc \
-	python-django-openstack-auth
-
+# OpenStack version
 #
-yum -y install rubygem-openstack rubygem-openstack-compute openstack-quantum-linuxbridge \
-	openstack-quantum-openvswitch openstack-swift-account openstack-swift-container \
-	openstack-swift-object openstack-swift-account openstack-swift-container \
-	python-django-horizon python-keystoneclient python-nova-adminclient \
-	python-quantumclient nbd
+midori http://wiki.openstack.org/Releases
 
+# The default version of OpenStack is:
+# - Essex (2012.1.x) on Fedora 17
+# - Folsom (2012.2.x) on Fedora 18
+# As the most recent versions of OpenStack are packaged for Fedora/RedHat/CentOS,
+# one can add the following Yum repository to upgrade OpenStack, for instance
+# from Essex to Folsom on a Fedora 17, or to install directly the latest version.
+curl http://repos.fedorapeople.org/repos/openstack/openstack-folsom/fedora-openstack-folsom.repo \
+	-o /etc/yum.repos.d/fedora-openstack-folsom.repo
+
+##
+# Release version of OpenStack:
+#
+# For a remote repository:
+yum info openstack-nova-compute | grep -e Version -e Release
+# Standard Fedora 17 repositories:
+echo Version     : 2012.1.3
+echo Release     : 1.fc17
+#
+# Fedora OpenStack preview repository:
+echo Version     : 2012.2
+echo Release     : 1.fc18
+#
+# From the RPM database:
+rpm -qv openstack-nova-compute
+# Standard Fedora 17 repositories:
+echo openstack-nova-compute-2012.1.3-1.fc17.noarch
+# Fedora OpenStack preview repository:
+echo openstack-nova-compute-2012.2-1.fc18.noarch
+#
+# From OpenStack itself:
+nova-manage version
+# Standard Fedora 17 repositories:
+echo 2012.1.3 (2012.1.3-LOCALBRANCH:LOCALREVISION)
+# Fedora OpenStack preview repository:
+echo 2012.2 (2012.2-LOCALBRANCH:LOCALREVISION)
+
+
+##
+# Packages and dependencies
+# Nova (compute), Glance (images), Keystone (identity), Swift (object store), Horizon (dashboard)
+yum -y install openstack-utils openstack-nova openstack-glance openstack-keystone \
+	openstack-swift openstack-dashboard openstack-swift-proxy openstack-swift-account \
+	openstack-swift-container openstack-swift-object
+# QPID (AMQP message bus), memcached, NBD (Network Block Device) module
+yum -y install qpid-cpp-server-daemon qpid-cpp-server memcached nbd
+# Python bindings
+yum -y install python-django-openstack-auth python-django-horizon \
+	python-keystone python-keystone-auth-token python-keystoneclient \
+	python-nova-adminclient python-quantumclient
+# Some documentation
+yum -y install openstack-keystone-doc openstack-swift-doc openstack-cinder-doc \
+	python-keystoneclient-doc
+# New Folsom components: Quantum (network), Tempo, Cinder (replacement for Nova volumes)
+yum -y install openstack-quantum openstack-tempo openstack-cinder \
+	openstack-quantum-linuxbridge openstack-quantum-openvswitch \
+	python-cinder python-cinderclient
+# Ruby bindings
+yum -y install rubygem-openstack rubygem-openstack-compute
 # Image creation
-yum -y install appliance-tools appliance-tools-minimizer febootstrap rubygem-boxgrinder-build
+yum -y install appliance-tools appliance-tools-minimizer \
+	febootstrap rubygem-boxgrinder-build
 
 # Eucalyptus
 yum -y install euca2ools
@@ -40,16 +87,26 @@ mkdir -p ~/etc
 cat > ~/etc/clean_os_db.sql << _EOF
 drop database if exists nova;
 drop database if exists glance;
+drop database if exists cinder;
 drop database if exists keystone;
 grant usage on *.* to 'nova'@'%'; drop user 'nova'@'%';
 grant usage on *.* to 'nova'@'localhost'; drop user 'nova'@'localhost';
 grant usage on *.* to 'glance'@'%'; drop user 'glance'@'%';
 grant usage on *.* to 'glance'@'localhost'; drop user 'glance'@'localhost';
+grant usage on *.* to 'cinder'@'%'; drop user 'cinder'@'%';
+grant usage on *.* to 'cinder'@'localhost'; drop user 'cinder'@'localhost';
 grant usage on *.* to 'keystone'@'%'; drop user 'keystone'@'%';
 grant usage on *.* to 'keystone'@'localhost'; drop user 'keystone'@'localhost';
 flush privileges;
 _EOF
 mysql -u root -p mysql < ~/etc/clean_os_db.sql
+cat > ~/etc/create_os_users.sql << _EOF
+grant usage on *.* to 'nova'@'%'; grant usage on *.* to 'nova'@'localhost';
+grant usage on *.* to 'glance'@'%'; grant usage on *.* to 'glance'@'localhost';
+grant usage on *.* to 'cinder'@'%'; grant usage on *.* to 'cinder'@'localhost';
+grant usage on *.* to 'keystone'@'%'; grant usage on *.* to 'keystone'@'localhost';
+flush privileges;
+_EOF
 
 
 ##
@@ -64,6 +121,11 @@ nova-manage db sync
 ##
 # Glance set up
 openstack-db --service glance --init
+
+##
+# Cinder (from Folsom) set up
+openstack-db --service cinder --init
+cinder-manage db sync
 
 ##
 # QPID
@@ -83,11 +145,54 @@ for svc in api registry; do systemctl status openstack-glance-$svc.service; done
 # for svc in api registry; do systemctl disable openstack-glance-$svc.service; done
 
 ##
-# Volume storage
-dd if=/dev/zero of=/var/lib/nova/nova-volumes.img bs=1M seek=20k count=0
-vgcreate nova-volumes $(losetup --show -f /var/lib/nova/nova-volumes.img)
+# Cinder volumes (from Folsom)
+#
+VOL_DIR=/data/virtualisation/volumes
+CINDER_VOL_FILE=$VOL_DIR/cinder-volumes.img
+mkdir -p $VOL_DIR
+truncate --size=20G $CINDER_VOL_FILE
+
+# 1. Temporary solution (not persistent through reboots).
+losetup --show -f $CINDER_VOL_FILE
+CINDER_VOL_DEVICE=$(losetup -a | grep "$CINDER_VOL_FILE" | cut -d':' -f1)
 # losetup -a # To see all the loopback devices
 # losetup -d /dev/loop1 # To remove some extra loopback devices
+# Because the volume service is dependent on the volume group being available,
+# it is not started by default. So, the losetup command has to be re-issued
+# after every reboot.
+
+# 2. Permanent solution.
+# If you intend to make them persist automatically, then enable the service to start
+# in the standard manner, but ensure that the losetup is run early in the boot process,
+# or instead, use an implicitly persistent block device/partition. For instance:
+LOOP_EXEC_DIR=/usr/libexec/cinder
+LOOP_SVC=cinder-demo-disk-image.service
+LOOP_EXEC=voladm
+GH_SYSD_BASE_URL=https://raw.github.com/denisarnaud/openstack-configuration/master
+GH_SYSD_LOOP_SVC_URL=$GH_SYSD_BASE_URL/systemd/$LOOP_SVC
+GH_SYSD_LOOP_EXEC_URL=$GH_SYSD_BASE_URL/bin/$LOOP_EXEC
+mkdir -p $LOOP_EXEC_DIR
+curl $GH_SYSD_LOOP_SVC_URL -o /usr/lib/systemd/system/$LOOP_SVC
+curl $GH_SYSD_LOOP_EXEC_URL -o $LOOP_EXEC_DIR/$LOOP_EXEC
+chmod -R a+rx $LOOP_EXEC_DIR
+systemctl start $LOOP_SVC && systemctl enable $LOOP_SVC
+# ln -sf /usr/lib/systemd/system/$LOOP_SVC /etc/systemd/system/multi-user.target.wants/
+# systemctl disable $LOOP_SVC
+# By construction (hard-coded in the systemd script):
+CINDER_VOL_DEVICE=/dev/loop0
+
+# Create the cinder-volumes Volume Group (VG) for the volume service:
+vgcreate cinder-volumes $CINDER_VOL_DEVICE
+
+# The Cinder service can now be started:
+systemctl start openstack-cinder-volume.service && systemctl enable openstack-cinder-volume.service
+#systemctl disable openstack-cinder-volume.service
+
+
+##
+# Nova volume services (deprecated from Folsom: replace by Cinder)
+# dd if=/dev/zero of=/var/lib/nova/nova-volumes.img bs=1M seek=20k count=0
+# vgcreate nova-volumes $(losetup --show -f /var/lib/nova/nova-volumes.img)
 
 ##
 # If installing OpenStack without hardware acceleration (e.g., from within a VM)
@@ -106,7 +211,7 @@ for svc in api objectstore compute network volume scheduler cert; do systemctl s
 
 # Keystone PKI support
 midori http://docs.openstack.org/developer/keystone/configuration.html
-keystone-manage pki_setup
+keystone-manage pki_setup # Only available from Folsom version
 chmod g+rx,o+rx /etc/keystone/ssl /etc/keystone/ssl/certs /etc/keystone/ssl/private
 chmod g+r,o+r /etc/keystone/ssl/certs/*.* /etc/keystone/ssl/private/*.*
 
@@ -280,95 +385,6 @@ midori http://localhost/dashboard &
 ##
 # Swift
 #
-
-#
-mkdir -p ~/etc
-cat > ~/etc/swift.conf << _EOF
-[swift-hash]
-swift_hash_path_suffix = randomestringchangeme
-_EOF
-\mv -f ~/etc/swift.conf /etc/swift/swift.conf
-
-#
-cat > ~/etc/proxy-server.conf << _EOF
-[DEFAULT]
-bind_port = 8080
-workers = 8
-user = swift
-[pipeline:main]
-pipeline = catch_errors healthcheck cache authtoken keystone proxy-server
-[app:proxy-server]
-use = egg:swift#proxy
-account_autocreate = true
-[filter:keystone]
-paste.filter_factory = keystone.middleware.swift_auth:filter_factory
-operator_roles = admin, swiftoperator
-[filter:authtoken]
-paste.filter_factory = keystone.middleware.auth_token:filter_factory
-auth_port = 35357
-auth_host = 127.0.0.1
-auth_protocol = http
-admin_token = ADMINTOKEN
-# ??? Are these needed?
-service_port = 5000
-service_host = 127.0.0.1
-service_protocol = http
-auth_token = ADMINTOKEN
-[filter:healthcheck]
-use = egg:swift#healthcheck
-[filter:cache]
-use = egg:swift#memcache
-memcache_servers = 127.0.0.1:11211
-[filter:catch_errors]
-use = egg:swift#catch_errors
-_EOF
-\mv -f ~/etc/proxy-server.conf /etc/swift/proxy-server.conf
-
-#
-cat > ~/etc/account-server.conf << _EOF
-[DEFAULT]
-bind_ip = 127.0.0.1
-workers = 2
-[pipeline:main]
-pipeline = account-server
-[app:account-server]
-use = egg:swift#account
-[account-replicator]
-[account-auditor]
-[account-reaper]
-_EOF
-\mv -f ~/etc/account-server.conf /etc/swift/account-server.conf
-
-#
-cat > ~/etc/container-server.conf << _EOF
-[DEFAULT]
-bind_ip = 127.0.0.1
-workers = 2
-[pipeline:main]
-pipeline = container-server
-[app:container-server]
-use = egg:swift#container
-[container-replicator]
-[container-updater]
-[container-auditor]
-_EOF
-\mv -f ~/etc/container-server.conf /etc/swift/container-server.conf
-
-#
-cat > ~/etc/object-server.conf << _EOF
-[DEFAULT]
-bind_ip = 127.0.0.1
-workers = 2
-[pipeline:main]
-pipeline = object-server
-[app:object-server]
-use = egg:swift#object
-[object-replicator]
-[object-updater]
-[object-auditor]
-_EOF
-\mv -f ~/etc/object-server.conf /etc/swift/object-server.conf
-
 # Set the keystone Admin token in the swift proxy file
 openstack-config --set /etc/swift/proxy-server.conf filter:authtoken admin_token $ADMIN_TOKEN
 openstack-config --set /etc/swift/proxy-server.conf filter:authtoken auth_token $ADMIN_TOKEN
