@@ -28,26 +28,26 @@ curl http://repos.fedorapeople.org/repos/openstack/openstack-folsom/fedora-opens
 # For a remote repository:
 yum info openstack-nova-compute | grep -e Version -e Release
 # Standard Fedora 17 repositories:
-echo Version     : 2012.1.3
-echo Release     : 1.fc17
+echo "Version     : 2012.1.3"
+echo "Release     : 1.fc17"
 #
 # Fedora OpenStack preview repository:
-echo Version     : 2012.2
-echo Release     : 1.fc18
+echo "Version     : 2012.2"
+echo "Release     : 1.fc18"
 #
 # From the RPM database:
 rpm -qv openstack-nova-compute
 # Standard Fedora 17 repositories:
-echo openstack-nova-compute-2012.1.3-1.fc17.noarch
+echo "openstack-nova-compute-2012.1.3-1.fc17.noarch"
 # Fedora OpenStack preview repository:
-echo openstack-nova-compute-2012.2-1.fc18.noarch
+echo "openstack-nova-compute-2012.2-1.fc18.noarch"
 #
 # From OpenStack itself:
 nova-manage version
 # Standard Fedora 17 repositories:
-echo 2012.1.3 (2012.1.3-LOCALBRANCH:LOCALREVISION)
+echo "2012.1.3 (2012.1.3-LOCALBRANCH:LOCALREVISION)"
 # Fedora OpenStack preview repository:
-echo 2012.2 (2012.2-LOCALBRANCH:LOCALREVISION)
+echo "2012.2 (2012.2-LOCALBRANCH:LOCALREVISION)"
 
 
 ##
@@ -189,21 +189,17 @@ systemctl start openstack-cinder-volume.service && systemctl enable openstack-ci
 
 
 ##
-# Nova volume services (deprecated from Folsom: replace by Cinder)
-# dd if=/dev/zero of=/var/lib/nova/nova-volumes.img bs=1M seek=20k count=0
-# vgcreate nova-volumes $(losetup --show -f /var/lib/nova/nova-volumes.img)
-
-##
 # If installing OpenStack without hardware acceleration (e.g., from within a VM)
 #openstack-config --set /etc/nova/nova.conf DEFAULT libvirt_type qemu
 #setsebool -P virt_use_execmem on # This may take a while
 
+
 ##
 # Nova services
-for svc in api objectstore compute network volume scheduler cert; do systemctl start openstack-nova-$svc.service; done
-for svc in api objectstore compute network volume scheduler cert; do systemctl enable openstack-nova-$svc.service; done
-for svc in api objectstore compute network volume scheduler cert; do systemctl status openstack-nova-$svc.service; done
-# for svc in api objectstore compute network volume scheduler cert; do systemctl disable openstack-nova-$svc.service; done
+for svc in api objectstore compute network scheduler cert; do systemctl start openstack-nova-$svc.service; done
+for svc in api objectstore compute network scheduler cert; do systemctl enable openstack-nova-$svc.service; done
+for svc in api objectstore compute network scheduler cert; do systemctl status openstack-nova-$svc.service; done
+# for svc in api objectstore compute network scheduler cert; do systemctl disable openstack-nova-$svc.service; done
 
 ##
 # Keystone
@@ -238,7 +234,8 @@ systemctl start openstack-keystone.service && systemctl enable openstack-keyston
 # systemctl disable openstack-keystone.service
 
 # Keystone sample data
-ADMIN_PASSWORD=$OS_PASSWORD SERVICE_PASSWORD=servicepass openstack-keystone-sample-data
+SERVICE_PASSWORD=servicepass
+ADMIN_PASSWORD=$OS_PASSWORD openstack-keystone-sample-data
 
 # Test keystone
 keystone user-list
@@ -256,6 +253,28 @@ keystone tenant-list
 # midori https://bugs.launchpad.net/keystone/+bug/996638
 # Then, the process must be restarted from the beginning (wiping out the database)
 
+##
+# Add Cinder-related entries
+SERVICE_TENANT=$(keystone tenant-list | awk '/ service / {print $2}')
+ADMIN_ROLE=$(keystone role-list | awk '/ admin / {print $2}')
+#
+function get_id () {
+	echo `"$@" | grep ' id ' | awk '{print $4}'`;
+}
+CINDER_SERVICE=$(get_id keystone service-create --name=cinder \
+	--type=volume --description="Cinder Volume Service")
+CINDER_USER=$(get_id keystone user-create --name=cinder --pass="$SERVICE_PASSWORD" \
+	--tenant_id $SERVICE_TENANT --email=cinder@example.com)
+unset get_id
+keystone user-role-add --tenant_id $SERVICE_TENANT --user_id $CINDER_USER \
+	--role_id $ADMIN_ROLE
+if [[ -n "$ENABLE_ENDPOINTS" ]]; then
+	keystone endpoint-create --region RegionOne --service_id $CINDER_SERVICE \
+		--publicurl 'http://localhost:8776/v1/$(tenant_id)s' \
+		--adminurl 'http://localhost:8776/v1/$(tenant_id)s' \
+		--internalurl 'http://localhost:8776/v1/$(tenant_id)s'
+fi
+
 # Check that the user roles have been set properly
 ROLE_ADMIN_ID=$(keystone role-list | awk '/ admin / {print $2}')
 ROLE_KS_ADMIN_ID=$(keystone role-list | awk '/ KeystoneAdmin / {print $2}')
@@ -263,13 +282,15 @@ ROLE_KSSVC_ADMIN_ID=$(keystone role-list | awk '/ KeystoneServiceAdmin / {print 
 ADMIN_USER_ID=$(keystone user-list | awk '/ admin / {print $2}')
 ADMIN_TENANT_ID=$(keystone tenant-list | awk '/ admin / {print $2}')
 GLANCE_USER_ID=$(keystone user-list | awk '/ glance / {print $2}')
+CINDER_USER_ID=$(keystone user-list | awk '/ cinder / {print $2}')
 SERVICE_TENANT_ID=$(keystone tenant-list | awk '/ service / {print $2}')
 echo "[Roles] ROLE_ADMIN_ID=${ROLE_ADMIN_ID}, ROLE_KS_ADMIN_ID=${ROLE_KS_ADMIN_ID}, ROLE_KSSVC_ADMIN_ID=${ROLE_KSSVC_ADMIN_ID}"
-echo "[Users] ADMIN_USER_ID=${ADMIN_USER_ID}, GLANCE_USER_ID=${GLANCE_USER_ID}"
+echo "[Users] ADMIN_USER_ID=${ADMIN_USER_ID}, GLANCE_USER_ID=${GLANCE_USER_ID}, CINDER_USER_ID=${CINDER_USER_ID}"
 echo "[Tenants] ADMIN_TENANT_ID=${ADMIN_TENANT_ID}, SERVICE_TENANT_ID=${SERVICE_TENANT_ID}"
 #
 keystone user-role-list --user-id ${ADMIN_USER_ID} --tenant-id ${ADMIN_TENANT_ID}
 keystone user-role-list --user-id ${GLANCE_USER_ID} --tenant-id ${SERVICE_TENANT_ID}
+keystone user-role-list --user-id ${CINDER_USER_ID} --tenant-id ${SERVICE_TENANT_ID}
 
 # Manually add the user roles, if the above did not work properly
 #keystone user-role-add --user-id ${ADMIN_USER_ID} --role-id ${ROLE_ADMIN_ID} --tenant-id ${ADMIN_TENANT_ID}
@@ -422,7 +443,7 @@ chown -R swift:swift /etc/swift /srv/node/partitions
 # Added the swift service and endpoint to keystone
 keystone  service-create --name=swift --type=object-store --description="Swift Service"
 SWIFT_SERVICE_ID=$(keystone service-list | awk '/ swift / {print $2}')
-echo $SWIFT_SERVICE_ID # just making sure we got a SWIFT_SERVICE_ID
+echo "$SWIFT_SERVICE_ID" # just making sure we got a SWIFT_SERVICE_ID
 keystone endpoint-create --service_id $SWIFT_SERVICE_ID \
 	--publicurl "http://127.0.0.1:8080/v1/AUTH_\$(tenant_id)s" \
 	--adminurl "http://127.0.0.1:8080/v1/AUTH_\$(tenant_id)s" \
