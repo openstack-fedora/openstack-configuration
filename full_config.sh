@@ -168,7 +168,7 @@ CINDER_VOL_DEVICE=$(losetup -a | grep "$CINDER_VOL_FILE" | cut -d':' -f1)
 LOOP_EXEC_DIR=/usr/libexec/cinder
 LOOP_SVC=cinder-demo-disk-image.service
 LOOP_EXEC=voladm
-GH_SYSD_BASE_URL=https://raw.github.com/denisarnaud/openstack-configuration/master
+GH_SYSD_BASE_URL=https://raw.github.com/openstack-fedora/openstack-configuration/master
 GH_SYSD_LOOP_SVC_URL=$GH_SYSD_BASE_URL/systemd/$LOOP_SVC
 GH_SYSD_LOOP_EXEC_URL=$GH_SYSD_BASE_URL/bin/$LOOP_EXEC
 mkdir -p $LOOP_EXEC_DIR
@@ -176,7 +176,6 @@ curl $GH_SYSD_LOOP_SVC_URL -o /usr/lib/systemd/system/$LOOP_SVC
 curl $GH_SYSD_LOOP_EXEC_URL -o $LOOP_EXEC_DIR/$LOOP_EXEC
 chmod -R a+rx $LOOP_EXEC_DIR
 systemctl start $LOOP_SVC && systemctl enable $LOOP_SVC
-# ln -sf /usr/lib/systemd/system/$LOOP_SVC /etc/systemd/system/multi-user.target.wants/
 # systemctl disable $LOOP_SVC
 # By construction (hard-coded in the systemd script):
 CINDER_VOL_DEVICE=/dev/loop0
