@@ -180,13 +180,25 @@ systemctl start $LOOP_SVC && systemctl enable $LOOP_SVC
 # By construction (hard-coded in the systemd script):
 CINDER_VOL_DEVICE=/dev/loop0
 
+# The volumes should belong to the cinder (Unix) user
+chown -R cinder.cinder $VOL_DIR
+
 # Create the cinder-volumes Volume Group (VG) for the volume service:
 vgcreate cinder-volumes $CINDER_VOL_DEVICE
 
-# The Cinder service can now be started:
-systemctl start openstack-cinder-volume.service && systemctl enable openstack-cinder-volume.service
-#systemctl disable openstack-cinder-volume.service
+# Tell Cinder that Keystone is the identity service
+openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 
+# The Cinder service can now be started:
+for svc in volume api scheduler; do systemctl start openstack-cinder-$svc.service; done
+for svc in volume api scheduler; do systemctl status openstack-cinder-$svc.service; done
+for svc in volume api scheduler; do systemctl enable openstack-cinder-$svc.service; done
+#for svc in volume api scheduler; do systemctl disable openstack-cinder-$svc.service; done
+
+# Update the Nova configuration file (thanks to http://wiki.openstack.org/MigrateToCinder)
+openstack-config --set /etc/nova/nova.conf DEFAULT volume_api_class nova.volume.cinder.API
+openstack-config --set /etc/nova/nova.conf DEFAULT enabled_apis ec2,osapi_compute,metadata
+openstack-config --del /etc/nova/nova.conf DEFAULT volumes_dir
 
 ##
 # If installing OpenStack without hardware acceleration (e.g., from within a VM)
@@ -377,23 +389,23 @@ chmod 600 ~/.ssh/id_oskey_demo
 # Launch the VM instance (JEOS = "Just Enough OS")
 GLANCE_IMG_ID=$(glance index | grep f${IMG_DIST_REL}-jeos | awk '{print $1}')
 # For the flavor reference, see the result of the 'nova flavor-list' command above
-nova boot myserver --flavor 2 --key_name mykey --image ${GLANCE_IMG_ID}
+nova boot myserver_${IMG_DIST_REL} --flavor 2 --key_name mykey --image ${GLANCE_IMG_ID}
 
 # Other reference documentation
 midori https://fedoraproject.org/wiki/QA:Testcase_launch_an_instance_on_OpenStack
 
 # Check that the KVM VM instance is running and that SSH works on it
 virsh list
-nova list # Wait that the status of myserver switches to ACTIVE (it may take time)
+nova list # Wait that the status of myserver_${IMG_DIST_REL} switches to ACTIVE (it may take time)
 ssh -i ~/.ssh/id_oskey_demo ec2-user@10.0.0.2
 # If there is any error, check the log file:
 grep -Hin error /var/log/nova/compute.log
 # Potentially, restart the nova scheduler:
 systemctl restart openstack-nova-scheduler.service
 # Check also the logs of the console:
-nova console-log myserver
+nova console-log myserver_${IMG_DIST_REL}
 # Eventually, delete the VM
-nova delete myserver
+nova delete myserver_${IMG_DIST_REL}
 
 ##
 # Horizon dashboard
