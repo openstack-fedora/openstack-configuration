@@ -1,0 +1,14 @@
+<template>
+  <name>Fedora_17_i386_jeos</name>
+  <os>
+    <name>Fedora</name>
+    <version>17</version>
+    <arch>i386</arch>
+    <install type='iso'>
+      <iso>http://fedora.mirrors.ovh.net/linux/releases/17/Fedora/i386/iso/Fedora-17-i386-DVD.iso</iso>
+    </install>
+    <rootpw>Welcome01</rootpw>
+  </os>
+  <description>Fedora 17 i386 template</description>
+</template>
+
