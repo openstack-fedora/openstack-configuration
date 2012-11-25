@@ -482,6 +482,11 @@ midori https://fedoraproject.org/wiki/Getting_started_with_OpenStack_on_Fedora_1
 #### ========================================================== ####
 ##                        Image creation                          ##
 #### ========================================================== ####
+## ----------------- ##
+# Appliance Creator   #
+## ----------------- ##
+midori http://thincrust.org
+# yum -y install appliance-tools
 APPL_DIR=/data/virtualisation/Appliance
 APPL_NAME=${IMG_DIST_TYPE}-${IMG_DIST_REL}-${IMG_DIST_FLV}-${IMG_TARGET}
 KS_SCRIPT_NAME=${APPL_NAME}.ks
@@ -504,6 +509,68 @@ echo "The raw image will now be converted into a QEMU-based one (QCOW2 format). 
 qemu-img convert -f raw -c -O qcow2 ${APPL_DIR}/${APPL_NAME}/${APPL_NAME}-${IMG_DISK_TYPE}.raw ${IMG_DIR}/${APPL_NAME}-${IMG_DISK_TYPE}.qcow2
 echo "QEMU-based image created in the ${IMG_DIR} directory:"
 ls -lahF --color ${IMG_DIR}/${APPL_NAME}-${IMG_DISK_TYPE}.qcow2
+
+## -------------- ##
+#    BoxGrinder    #
+## -------------- ##
+midori http://boxgrinder.org
+# yum -y install rubygem-boxgrinder-core rubygem-boxgrinder-build
+APPL_DIR=/data/virtualisation/Appliance
+APPL_NAME=${IMG_DIST_TYPE}-${IMG_DIST_REL}-${IMG_DIST_FLV}
+BG_SCRIPT_NAME=${APPL_NAME}.bg
+BG_SCRIPT_DIR=./boxgrinder
+# The following command will take some time (around 20mn with an Internet bandwidth of 300KB/s),
+# as it downloads an image of approximately 250MB, then install some updates and do some adjustments.
+# The RAW image is installed within a newly created directory, namely ${APPL_NAME}
+echo "Downloading the ISO installation media for Fedora ${IMG_DIST_REL} ${IMG_DIST_FLV},"
+echo "starting that Fedora distribution within a dedicated KVM-based VM, changing the configuration to have it cloud-ready."
+echo "The whole operation may take several tens of minutes..."
+boxgrinder-build ${BG_SCRIPT_DIR}/${BG_SCRIPT_NAME} -f # Build KVM image for jeos.appl with removing previous build for this image
+boxgrinder-build ${BG_SCRIPT_DIR}/${BG_SCRIPT_NAME} --os-config format:qcow2 # Build KVM image for jeos.appl with a qcow2 disk
+boxgrinder-build ${BG_SCRIPT_DIR}/${BG_SCRIPT_NAME} -p virtualbox -d local # Build VirtualBox image for jeos.appl and deliver it to local directory
+echo "The configured RAW image will be available within the newly created ${APPL_DIR}/${APPL_NAME} directory."
+ls -lahF --color ${APPL_NAME}
+
+## ---------------- ##
+#        Oz          #
+## ---------------- ##
+midori http://github.com/clalancette/oz/wiki
+# yum -y install oz
+IMG_DIR=/data/virtualisation/${IMG_DIST_TYPE}/${IMG_DIST_TYPE}-${IMG_DIST_REL}-${IMG_DIST_FLV}-vdi
+LIBVIRT_DIR=/var/lib/libvirt/images
+APPL_DIR=/data/virtualisation/ImageFactory
+APPL_NAME=${IMG_DIST_TYPE}-${IMG_DIST_REL}-${IMG_DIST_FLV}
+LIBVIRT_DISK_NAME=${APPL_NAME}.dsk
+TDL_SCRIPT_NAME=${APPL_NAME}.tdl
+TDL_SCRIPT_DIR=./tdl
+# Running the following command will download and prepare the installation
+# media (which may be of several Giga bytes), then run an automated install
+# in a KVM guest. Assuming the install succeeds, the minimal operating system
+# will be installed on a file in /var/lib/libvirt/images/${APPL_NAME}.dsk
+# (by default, the output location can be overridden in the configuration file).
+echo "Downloading the ISO installation media for Fedora ${IMG_DIST_REL} ${IMG_DIST_FLV},"
+echo "starting that Fedora distribution within a dedicated KVM-based VM, changing the configuration to have it cloud-ready."
+echo "The whole operation may take several tens of minutes..."
+# -d4: display all the messages
+# -p: clean any old guest
+# -u: customise the image (e.g., install supplementary packages) after installation
+oz-install -d4 -p -u ${TDL_SCRIPT_DIR}/${TDL_SCRIPT_NAME} 
+echo "The configured RAW image will be available within the libvirt image directory:"
+ls -lahF --color ${LIBVIRT_DIR}
+# Install a VM with virt-manager by importing the disk image,
+# or install a VM with the command-line:
+virt-install -n ${APPL_NAME} -r 2048 --vcpus=2 --accelerate --virt-type=kvm \
+	--controller sata --disk path=${LIBVIRT_DIR}/${LIBVIRT_DISK_NAME},bus=sata \
+	--noautoconsole --noreboot --import
+# To start the VM (not necessary)
+# virsh --connect qemu:///system start Fedora_17_i386_sim2
+echo "The KVM image will now be converted into a VirtualBox-based one (VDI format). This again may take a few minutes."
+mkdir -p ${IMG_DIR}
+qemu-img convert -O vdi ${LIBVIRT_DIR}/${APPL_NAME}.dsk ${IMG_DIR}/${APPL_NAME}.vdi
+# or (not necessary):
+# VBoxManage convertfromraw intermediateDiskImage.bin ${IMG_DIR}/${APPL_NAME}-${IMG_DISK_TYPE}.vdi
+echo "VirtualBox-based image created in the ${IMG_DIR} directory:"
+ls -lahF --color ${IMG_DIR}/${APPL_NAME}-${IMG_DISK_TYPE}.vdi
 
 
 #### ========================================================== ####
