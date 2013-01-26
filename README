@@ -1,4 +1,3 @@
-
 #### ========================================================== ####
 ##                        OpenStack alone                         ##
 #### ========================================================== ####
@@ -7,6 +6,7 @@
 # Documentation
 #
 midori http://fedoraproject.org/wiki/Getting_started_with_OpenStack_on_Fedora_17
+midori http://d.hatena.ne.jp/enakai00/20130118/1358474820 # OpenStack Folsom - QuickStart with Fedora 18
 
 ##
 # Dependencies
